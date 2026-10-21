@@ -1,10 +1,10 @@
-# Pitstop — a DevSecOps learning project
+# Pitstop — a DevSecOps project
 
 Pitstop is a garage-management microservices app (customer records,
 vehicles, workshop scheduling) used here as raw material for an
 end-to-end DevSecOps build: source code → CI → GitOps-deployed
 Kubernetes → security-scanned pipeline → observability → optional
-service mesh → optional cloud deployment. The application itself is
+service mesh . The application itself is
 intentionally left at its original ~2022 vintage (Vue 2, Express 4,
 Sequelize) — the point of the project is the platform built around it,
 not a rewrite of the app.
