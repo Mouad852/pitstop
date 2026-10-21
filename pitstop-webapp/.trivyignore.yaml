@@ -1,0 +1,12 @@
+# This service's runtime image is nginx-unprivileged:alpine and contains no
+# npm, so CVE-2026-59873 is not expected to appear here. The entry is kept so
+# that --ignorefile resolves uniformly across all pipelines, and to cover the
+# Node build stage should image scanning ever include it.
+vulnerabilities:
+  - id: CVE-2026-59873
+    statement: >-
+      node-tar is bundled inside npm in the Node build stage, which is
+      discarded in the final image. Nothing in the served nginx image invokes
+      tar. The vulnerability is a gzip-bomb denial of service requiring an
+      attacker-supplied archive. Re-evaluate when a patched base image exists.
+    expired_at: 2026-11-30

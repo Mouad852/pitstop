@@ -1,0 +1,12 @@
+.git
+.gitignore
+.gitattributes
+.gitlab-ci.yml
+node_modules
+npm-debug.log*
+dist
+Dockerfile
+.dockerignore
+.env
+.env.*
+*.md

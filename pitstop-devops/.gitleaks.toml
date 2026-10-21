@@ -1,0 +1,22 @@
+title = "pitstop-kubernetes"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+SealedSecret ciphertext. These values are encrypted by the sealed-secrets
+controller and are safe to commit — that is the entire point of sealing
+them. Gitleaks flags them because the key names read like credentials and
+the ciphertext has high entropy (~5.9) by construction.
+
+Deliberately matched on the CIPHERTEXT PATTERN, not on the secrets/
+directory. Allowlisting the path would also hide a plaintext Secret
+accidentally committed there — which is both the mistake most likely to
+happen and precisely what this scan exists to catch. Sealed values always
+begin with "Ag"; a plaintext base64 value will not, so it still fails.
+"""
+regexTarget = "line"
+regexes = [
+  '''Ag[A-Za-z0-9+/=]{80,}''',
+]

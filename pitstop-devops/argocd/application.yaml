@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pitstop
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://gitlab.com/pitstop-mouad-chaouni/pitstop-kubernetes.git
+    targetRevision: main
+    path: .
+    directory:
+      recurse: true
+      # Argo treats every .yml/.yaml file it finds as a manifest, so the
+      # CI config has to be excluded explicitly or the Application errors
+      # trying to apply it as a Kubernetes resource.
+      exclude: '{argocd/*,.gitlab-ci.yml,platform/*-values.yaml}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pitstop
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+

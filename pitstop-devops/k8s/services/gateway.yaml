@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gateway
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+data:
+  gateway.config.yml: |
+    http:
+      port: 8080
+    admin:
+      port: 9876
+      host: localhost
+    apiEndpoints:
+      pitstop-customer:
+        paths: '/api/customers/*'
+      pitstop-vehicle:
+        paths: '/api/vehicles/*'
+      pitstop-workshop:
+        paths: '/api/workshop/*'
+    serviceEndpoints:
+      pitstop-customer-service:
+        url: 'http://customer:3001'
+      pitstop-vehicle-service:
+        url: 'http://vehicle:3002'
+      pitstop-workshop-service:
+        url: 'http://workshop:3003'
+    policies:
+      - basic-auth
+      - cors
+      - expression
+      - key-auth
+      - log
+      - oauth2
+      - proxy
+      - rate-limit
+    pipelines:
+      customers-pipelines:
+        apiEndpoints:
+          - pitstop-customer
+        policies:
+          - proxy:
+              - action:
+                  serviceEndpoint: pitstop-customer-service
+                  changeOrigin: true
+      vehicles-pipelines:
+        apiEndpoints:
+          - pitstop-vehicle
+        policies:
+          - proxy:
+              - action:
+                  serviceEndpoint: pitstop-vehicle-service
+                  changeOrigin: true
+      workshop-pipelines:
+        apiEndpoints:
+          - pitstop-workshop
+        policies:
+          - proxy:
+              - action:
+                  serviceEndpoint: pitstop-workshop-service
+                  changeOrigin: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      serviceAccountName: gateway
+      imagePullSecrets:
+        - name: gitlab-registry
+      containers:
+        - name: gateway
+          image: registry.gitlab.com/pitstop-mouad-chaouni/pitstop-express-gateway:50e9d972
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: config
+              mountPath: /app/config/gateway.config.yml
+              subPath: gateway.config.yml
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+      automountServiceAccountToken: false
+
+      volumes:
+        - name: config
+          configMap:
+            name: gateway-config

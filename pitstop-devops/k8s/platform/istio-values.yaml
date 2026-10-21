@@ -1,0 +1,40 @@
+# Istio control plane values.
+#
+# Not managed by Argo — the exclude pattern platform/*-values.yaml keeps it
+# out, same as the Prometheus and Loki values. Istio ships CRDs, and CRDs
+# under prune:true are the hazard that keeps chart installs out of GitOps.
+#
+# Applied with:
+#   helm upgrade --install istiod istio/istiod -n istio-system \
+#     --version 1.30.3 -f platform/istio-values.yaml
+
+pilot:
+  replicaCount: 1
+  autoscaleEnabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+global:
+  proxy:
+    # Sidecar sizing. The chart defaults (100m/128Mi request, 2000m/1Gi limit)
+    # are sized for production nodes. With 14 sidecars on one 10 GiB node the
+    # defaults would reserve 1.4 CPU and 1.75 GiB in requests alone.
+    resources:
+      requests:
+        cpu: 30m
+        memory: 96Mi
+      limits:
+        cpu: 300m
+        memory: 256Mi
+
+meshConfig:
+  accessLogFile: /dev/stdout
+  accessLogEncoding: JSON
+
+  defaultConfig:
+    holdApplicationUntilProxyStarts: true

@@ -1,0 +1,53 @@
+# Shared rule sets. Referenced with `!reference`, so the paths that
+# trigger a rebuild are defined exactly once.
+
+# Security jobs: run on every main commit, on MRs, and on schedule.
+# The schedule matters more than it looks — vulnerabilities appear in
+# code that has not changed, so scanning only on change means a CVE
+# published today is invisible until someone happens to push.
+.rules-security:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# Build + deploy: only when something that lands in the image changed.
+# Deliberately a positive list. Negative matching ("skip if only *.md
+# changed") is unsafe here: `changes` is true if ANY listed file changed,
+# so a commit touching README *and* app.js would match and skip the build.
+# A missed path means a job does not run when it should, so keep this
+# broad — the weekly schedule is the backstop.
+.rules-image:
+  rules:
+    # `changes:` always evaluates to TRUE in scheduled pipelines — there is
+    # no push diff to compare against — so without this guard a scheduled
+    # run would rebuild and push over an existing tag. The running pods
+    # keep the image they already pulled, so container-scan would then be
+    # scanning something production is not actually running.
+    # Scheduled runs rescan the registry image as-is; they never rebuild.
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == "main"
+      changes:
+        - "**/*.js"
+        - "**/*.mjs"
+        - "**/*.cjs"
+        - "**/*.vue"
+        - "**/*.json"
+        - "**/*.html"
+        - "**/*.css"
+        - "**/*.scss"
+        - "**/*.sql"
+        - "**/*.conf"
+        - "**/*.yml"
+        - "**/*.yaml"
+        - "bin/**/*"
+        - "config/**/*"
+        - Dockerfile
+        # Dotfiles are listed explicitly: glob patterns like "**/*.yml"
+        # do not reliably match names beginning with a dot, and bin/www
+        # has no extension at all — the two ways a positive list quietly
+        # fails to fire.
+        - .dockerignore
+        - .gitlab-ci.yml
+        - .trivyignore.yaml

@@ -1,0 +1,24 @@
+stages:
+  - security
+  - build
+  - scan
+  - deploy
+
+include:
+  - project: 'pitstop-mouad-chaouni/pitstop-ci-templates'
+    ref: main
+    file:
+      - '/rules.yml'
+      - '/build.yml'
+      - '/deploy.yml'
+      - '/security.yml'
+
+build-image:
+  extends: .build-image
+
+update-manifest:
+  extends: .update-manifest
+  variables:
+    IMAGE_NAME: pitstop-workshop
+    MANIFEST_FILE: services/workshop.yaml
+    SERVICE_NAME: workshop

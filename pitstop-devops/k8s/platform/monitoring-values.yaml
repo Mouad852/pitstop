@@ -1,0 +1,46 @@
+# kube-prometheus-stack, sized for a local minikube cluster that is also
+# running the app. Not Argo-managed: the chart ships CRDs, and this repo's
+# Application runs prune:true — pruning a CRD deletes every CR of that kind.
+prometheus:
+  prometheusSpec:
+    scrapeInterval: 60s
+    evaluationInterval: 60s
+    retention: 3d
+    retentionSize: 8GB
+    resources:
+      requests: { cpu: 200m, memory: 1Gi }
+      limits: { memory: 2Gi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+
+grafana:
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: true
+    size: 2Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 512Mi }
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits:   { memory: 256Mi }
+
+# On minikube these control-plane components bind to 127.0.0.1, so their
+# scrape targets are unreachable and sit permanently "down" — producing
+# alert noise that is an artifact of the environment, not a real problem.
+# Disabled deliberately; on a real cluster they would be left on.
+kubeControllerManager: { enabled: false }
+kubeScheduler:         { enabled: false }
+kubeProxy:             { enabled: false }
+kubeEtcd:              { enabled: false }

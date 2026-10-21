@@ -1,0 +1,53 @@
+# Loki sized for a cluster whose measured bottleneck is disk I/O.
+# Deliberately minimal: monolithic mode, filesystem storage, 24h retention,
+# every cache and optional component off. This install is an EXPERIMENT with
+# an exit condition — if etcd latency or load average degrade after it runs,
+# it comes back out.
+
+deploymentMode: Monolithic
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  limits_config:
+    retention_period: 24h
+    volume_enabled: true
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 5Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 1Gi }
+
+# Scalable-mode components: not used in Monolithic, explicitly zeroed so a
+# chart default cannot quietly schedule them.
+read:    { replicas: 0 }
+write:   { replicas: 0 }
+backend: { replicas: 0 }
+
+# Every one of these is an extra pod. On a cluster with no I/O headroom,
+# memcached instances for a few hundred MB of logs are not worth their cost.
+chunksCache:  { enabled: false }
+resultsCache: { enabled: false }
+lokiCanary:   { enabled: false }
+test:         { enabled: false }
+gateway:      { enabled: false }
+minio:        { enabled: false }

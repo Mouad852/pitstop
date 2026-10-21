@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-workshop-headless
+spec:
+  clusterIP: None
+  selector:
+    app: mysql-workshop
+  ports:
+    - name: mysql
+      port: 3306
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-workshop
+spec:
+  type: ClusterIP
+  selector:
+    app: mysql-workshop
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-workshop
+spec:
+  serviceName: mysql-workshop-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-workshop
+  template:
+    metadata:
+      annotations:
+        # Kept out of the service mesh. MySQL speaks its own TCP protocol, so
+        # a sidecar contributes no request metrics, retries or path-based
+        # policy - only extra startup ordering and connection draining risk.
+        # Leaving the data layer unmeshed also keeps it eliminated as a
+        # suspect when debugging mesh behaviour.
+        sidecar.istio.io/inject: "false"
+      labels:
+        app: mysql-workshop
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: mysql
+          image: mysql:8.4
+          envFrom:
+            - secretRef:
+                name: mysql-workshop-credentials
+          ports:
+            - name: mysql
+              containerPort: 3306
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mysqladmin ping -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD"
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mysqladmin ping -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD"
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mysqladmin ping -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD"
+            periodSeconds: 20
+            timeoutSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

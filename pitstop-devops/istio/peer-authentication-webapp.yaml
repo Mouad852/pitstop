@@ -1,0 +1,11 @@
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: webapp
+  namespace: pitstop
+spec:
+  selector:
+    matchLabels:
+      app: webapp
+  mtls:
+    mode: PERMISSIVE

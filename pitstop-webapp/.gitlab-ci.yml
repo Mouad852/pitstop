@@ -1,0 +1,38 @@
+stages:
+  - security
+  - build
+  - scan
+  - deploy
+
+include:
+  - project: 'pitstop-mouad-chaouni/pitstop-ci-templates'
+    ref: main
+    file:
+      - '/rules.yml'
+      - '/build.yml'
+      - '/deploy.yml'
+      - '/security.yml'
+
+# The only repo that overrides .build-image. The shared runner's MTU is
+# smaller than DinD's 1500 default, which silently stalls the large
+# downloads this Vue build makes; --mtu=1300 is the fix.
+# Note: `variables` merge with the template (DOCKER_TLS_CERTDIR is
+# inherited), but `services` and `before_script` are REPLACED wholesale —
+# hence the docker login line has to be repeated here.
+build-image:
+  extends: .build-image
+  services:
+    - name: docker:24-dind
+      command: ["--mtu=1300"]
+  variables:
+    DOCKER_BUILDKIT: "0"
+  before_script:
+    - echo "runner MTU:" && cat /sys/class/net/eth0/mtu
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
+
+update-manifest:
+  extends: .update-manifest
+  variables:
+    IMAGE_NAME: pitstop-webapp
+    MANIFEST_FILE: services/webapp.yaml
+    SERVICE_NAME: webapp

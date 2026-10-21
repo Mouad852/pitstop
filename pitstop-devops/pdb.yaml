@@ -1,0 +1,40 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: customer
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: customer
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vehicle
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: vehicle
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: workshop
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: workshop
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gateway
+---

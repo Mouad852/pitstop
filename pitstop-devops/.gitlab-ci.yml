@@ -1,0 +1,92 @@
+stages:
+  - security
+  # Not named `dast` either — see the note on the zap-baseline job below.
+  - runtime-scan
+
+# Defined inline rather than pulled from pitstop-ci-templates/security.yml:
+# that file bundles dependency-scan, sonarqube and container-scan, and
+# container-scan would fail outright here — this repo builds no image.
+#
+# This repo is also the one where a leak would matter most: it holds the
+# SealedSecrets and is public. Gitleaks was run here by hand before the
+# sealed-secrets commit; this makes it automatic.
+# GIT_DEPTH: 0 because Gitleaks scans history, and GitLab clones shallow
+# by default — without it the scan passes because it never looked.
+secret-detection:
+  stage: security
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: 0
+  script:
+    # --config passed explicitly rather than relying on auto-detection of
+    # .gitleaks.toml — the same assumption cost time with Trivy and
+    # .trivyignore.yaml, where auto-detection silently did not happen.
+    - gitleaks detect --source . --config .gitleaks.toml --redact --verbose --report-path gitleaks-report.json --exit-code 1
+  artifacts:
+    when: always
+    paths:
+      - gitleaks-report.json
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# DAST tests the RUNNING system through the ingress, not a source tree —
+# which is why it lives here and not in the five app repos. Scanning the
+# same cluster five times would only produce five copies of every finding.
+#
+# Reachability: the minikube node container is attached to the pitstop-ci
+# Docker network with the alias `pitstop.local`, so job containers resolve
+# it by name and the Ingress host rule matches. Without that alias every
+# request 404s and the scan reports success having tested nothing.
+# See platform/README.md — it does not survive `minikube delete`.
+# NOT named `dast`. GitLab identifies its own Secure jobs by name, so a
+# job called `dast` pulls in the Ultimate-only `dast_configuration`
+# keyword and pipeline creation fails with "Insufficient permissions for
+# dast_configuration keyword" — valid YAML, rejected config, and the
+# Pipeline editor lints it clean because simulation skips licence checks.
+zap-baseline:
+  stage: runtime-scan
+  image:
+    name: ghcr.io/zaproxy/zaproxy:stable
+    entrypoint: [""]
+  tags:
+    - pitstop-local
+  variables:
+    ZAP_TARGET: "http://pitstop.local"
+  script:
+    - mkdir -p /zap/wrk
+    # -j runs the AJAX spider: the webapp is a Vue SPA, so the passive
+    # spider on its own sees almost no routes.
+    # `|| true` is TEMPORARY — report-only until the real findings have
+    # been read and a threshold chosen. Same discipline as the Trivy gate:
+    # a gate turned on blind goes permanently red and then gets deleted.
+    # -I: warnings do not fail the job. The gate is FAIL-level rules only,
+    # which has been 0 across three runs — so this is a threshold set from
+    # measurements, not a guess. WARN findings still appear in the log and
+    # the artifact; they are documented accepted risks (wildcard CORS,
+    # Vue 2 EOL, unsafe-inline styles).
+    - zap-baseline.py -t "$ZAP_TARGET" -r zap-report.html -J zap-report.json -j -I
+
+    # zap-baseline.py writes reports relative to its working directory,
+    # which with `entrypoint: [""]` is $CI_PROJECT_DIR rather than the
+    # image's own /zap/wrk. Copy from either, and never let the copy
+    # itself fail the job while this is still report-only.
+    - cp -f /zap/wrk/zap-report.* "$CI_PROJECT_DIR/" 2>/dev/null || true
+    - ls -l "$CI_PROJECT_DIR"/zap-report.* 2>/dev/null || echo "WARNING - no ZAP report was produced"
+  artifacts:
+    when: always
+    paths:
+      - zap-report.html
+      - zap-report.json
+    expire_in: 1 week
+  rules:
+    # Weekly is the honest cadence. On a normal commit the new image has
+    # not finished rolling out (Argo sync + pod restart), so a scan fired
+    # at push time would report on the PREVIOUS version.
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+      allow_failure: true

@@ -1,0 +1,78 @@
+secret-detection:
+  stage: security
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - gitleaks detect --source . --redact --verbose --report-path gitleaks-report.json --exit-code 1
+  artifacts:
+    when: always
+    paths:
+      - gitleaks-report.json
+    expire_in: 1 week
+  # Never path-gated: a leaked credential can be committed in any file,
+  # including the ones a build would ignore.
+  rules: !reference [.rules-security, rules]
+
+dependency-scan:
+  stage: security
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy fs --scanners vuln --severity HIGH,CRITICAL --exit-code 0 .
+    - trivy fs --scanners vuln --format json --output trivy-deps.json --exit-code 0 .
+  artifacts:
+    when: always
+    paths:
+      - trivy-deps.json
+    expire_in: 1 week
+  rules: !reference [.rules-security, rules]
+
+container-scan:
+  stage: scan
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  variables:
+    TRIVY_USERNAME: "$CI_REGISTRY_USER"
+    TRIVY_PASSWORD: "$CI_REGISTRY_PASSWORD"
+  script:
+    - trivy image --severity HIGH,CRITICAL --exit-code 0 "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+    - trivy image --format json --output trivy-image.json --exit-code 0 "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+    - trivy image --severity CRITICAL --ignore-unfixed --ignorefile .trivyignore.yaml --exit-code 1 "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+  artifacts:
+    when: always
+    paths:
+      - trivy-image.json
+    expire_in: 1 week
+  # Scheduled runs rescan the image already in the registry against a
+  # fresher vulnerability DB — no rebuild needed, and it is the only way
+  # a CVE published after the last commit ever gets noticed.
+  rules: !reference [.rules-security, rules]
+
+sonarqube:
+  stage: security
+  image:
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [""]
+  tags:
+    - pitstop-local
+  variables:
+    GIT_DEPTH: 0
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+  script:
+    - sonar-scanner
+      -Dsonar.projectKey="${CI_PROJECT_NAME}"
+      -Dsonar.projectName="${CI_PROJECT_NAME}"
+      -Dsonar.sources=.
+      -Dsonar.host.url="${SONAR_HOST_URL}"
+      -Dsonar.token="${SONAR_TOKEN}"
+      -Dsonar.qualitygate.wait=true
+  # .rules-image, not .rules-security: Sonar's verdict depends only on
+  # this source tree, so unchanged code yields an unchanged result and a
+  # scheduled run buys nothing. Trivy is the opposite — its verdict comes
+  # from an external database that moves without your code moving.
+  rules: !reference [.rules-image, rules]

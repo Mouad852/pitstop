@@ -1,0 +1,82 @@
+# PrometheusRule CRs are discovered by the prometheus-operator and loaded
+# into Prometheus automatically. Safe for Argo to manage: the CRD itself
+# comes from the Helm chart (which is not in Git), so pruning this file
+# would only remove the alerts, not the resource type.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pitstop-alerts
+  namespace: monitoring
+  labels:
+    release: monitoring          # the operator selects rules by this label
+spec:
+  groups:
+    - name: pitstop.workload
+      rules:
+
+        - alert: PodCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total{namespace="pitstop"}[15m]) > 3
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{ $labels.pod }} is crash looping"
+            description: "{{ $value | printf \"%.0f\" }} restarts in 15 minutes."
+
+        - alert: PodNotReady
+          expr: kube_pod_status_ready{namespace="pitstop",condition="true"} == 0
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $labels.pod }} has been not-Ready for 10 minutes"
+            description: >-
+              The pod is running but failing its readiness probe, so Services
+              exclude it from their endpoints and it is receiving no traffic.
+
+        - alert: DeploymentReplicasMismatch
+          expr: |
+            kube_deployment_spec_replicas{namespace="pitstop"}
+              != kube_deployment_status_replicas_ready{namespace="pitstop"}
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $labels.deployment }} has not converged"
+            description: "Desired and ready replica counts have differed for 15 minutes."
+
+    - name: pitstop.resources
+      rules:
+
+        # Found by observation, not guessed: rabbitmq-0 sits at ~34% throttled
+        # while idle. 25% is set just below that so the alert is meaningful
+        # rather than permanently firing.
+        - alert: CPUThrottlingHigh
+          expr: |
+            sum by (pod, namespace) (rate(container_cpu_cfs_throttled_periods_total{namespace="pitstop"}[10m]))
+              / clamp_min(sum by (pod, namespace) (rate(container_cpu_cfs_periods_total{namespace="pitstop"}[10m])), 1)
+              > 0.25
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $labels.pod }} is CPU throttled"
+            description: >-
+              Throttled in more than 25% of scheduling periods. The pod is slow
+              but nothing crashes, and CPU usage looks low precisely because it
+              is being held down. Raise the CPU limit or reduce concurrency.
+
+        - alert: PodMemoryNearLimit
+          expr: |
+            sum by (pod, namespace) (container_memory_working_set_bytes{namespace="pitstop"})
+              / clamp_min(sum by (pod, namespace) (kube_pod_container_resource_limits{namespace="pitstop",resource="memory"}), 1)
+              > 0.90
+          for: 10m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{ $labels.pod }} is near its memory limit"
+            description: "Working set above 90% of the limit. The next step is an OOM kill."
+
+        - alert: NodeMemoryPressure
+          expr: 1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.90
+          for: 10m
+          labels: { severity: critical }
+          annotations:
+            summary: "Node memory above 90%"
+            description: "Pod limits are irrelevant once the node itself is full."

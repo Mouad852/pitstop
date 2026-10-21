@@ -1,0 +1,37 @@
+.update-manifest:
+  stage: deploy
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache git openssh-client
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - tr -d '\r' < "$MANIFEST_SSH_KEY" | awk 1 > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null && echo "key parsed OK"
+    - ssh-keyscan gitlab.com >> ~/.ssh/known_hosts
+  script:
+    - ': "${IMAGE_NAME:?IMAGE_NAME is not set - check the extends block}"'
+    - ': "${MANIFEST_FILE:?MANIFEST_FILE is not set - check the extends block}"'
+    - ': "${SERVICE_NAME:?SERVICE_NAME is not set - check the extends block}"'
+    - git config --global user.email "ci@pitstop.local"
+    - git config --global user.name "Pitstop CI"
+    - git clone git@gitlab.com:pitstop-mouad-chaouni/pitstop-kubernetes.git manifests
+    - cd manifests
+    - test -f "${MANIFEST_FILE}" || { echo "manifest ${MANIFEST_FILE} does not exist"; exit 1; }
+    - grep -q "${IMAGE_NAME}:" "${MANIFEST_FILE}" || { echo "no image line for ${IMAGE_NAME} in ${MANIFEST_FILE}"; exit 1; }
+    - sed -i "s|${IMAGE_NAME}:.*|${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}|" "${MANIFEST_FILE}"
+    - grep -q "${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}" "${MANIFEST_FILE}" || { echo "sed did not produce the expected tag"; exit 1; }
+    - if git diff --quiet; then echo "Image tag already up to date, nothing to do"; exit 0; fi
+    - 'git commit -am "${SERVICE_NAME}: deploy ${CI_COMMIT_SHORT_SHA}"'
+    - |
+      for attempt in 1 2 3 4 5; do
+        if git push origin main; then
+          echo "pushed on attempt $attempt"
+          exit 0
+        fi
+        echo "push rejected (attempt $attempt) - rebasing onto latest main"
+        git pull --rebase origin main || { echo "rebase failed"; exit 1; }
+        sleep 3
+      done
+      echo "push failed after 5 attempts"
+      exit 1
+  rules: !reference [.rules-image, rules]
