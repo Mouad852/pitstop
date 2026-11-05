@@ -332,23 +332,3 @@ against AWS infrastructure outside the Kubernetes cluster entirely.
 
 Full teardown sequence and orphaned-resource checklist are documented in
 [`pitstop-devops/docs/eks.md`](pitstop-devops/docs/eks.md).
-
----
-
-## Known, accepted gaps
-
-Two items were identified during a full project review and left open
-deliberately rather than silently:
-
-- **Kiali was never installed.** The actual mTLS/authorization security
-  goal of Volet 4b was completed and independently verified without it;
-  Kiali would only have added a visualization layer on top of controls
-  already proven to work.
-- **`pitstop-vehicle` never publishes a `vehicle.deleted` event** on its
-  message bus, even though `pitstop-workshop` listens for one — deleting
-  a vehicle leaves a stale reference in the workshop service's own
-  database. A real application-level bug, out of scope for the platform
-  work this repository documents.
-
-A complete list of deliberate security trade-offs and their reasoning —
-not just these two — is in [`pitstop-devops/docs/security.md`, section 3](pitstop-devops/docs/security.md).
