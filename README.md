@@ -1,13 +1,45 @@
-# Pitstop — a DevSecOps project
+# Pitstop — a DevSecOps platform built around microservices
 
-Pitstop is a garage-management microservices app (customer records,
-vehicles, workshop scheduling) used here as raw material for an
-end-to-end DevSecOps build: source code → CI → GitOps-deployed
-Kubernetes → security-scanned pipeline → observability → optional
-service mesh . The application itself is
-intentionally left at its original ~2022 vintage (Vue 2, Express 4,
-Sequelize) — the point of the project is the platform built around it,
-not a rewrite of the app.
+Pitstop is a garage-management microservices application (customers, vehicles,
+and workshop scheduling) used as the foundation for an end-to-end DevSecOps
+implementation: source code → GitLab CI → GitOps → Kubernetes → observability.
+
+> **Engineering focus:** the platform work is the portfolio contribution. The
+> application components intentionally retain their original ~2022 technology
+> baseline (Vue 2, Express 4, Sequelize) rather than being presented as a
+> modernized application rewrite.
+
+<p align="center">
+  <img src="pitstop-devops/docs/screenshots/01-gitlab-pipeline.png" alt="Pitstop GitLab CI pipeline evidence" width="88%">
+</p>
+
+## Delivery flow
+
+```mermaid
+flowchart LR
+  Code[Service source] --> CI[GitLab CI\nbuild, test and security gates]
+  CI --> Registry[GitLab Container Registry\ncommit-SHA image]
+  CI --> GitOps[Service-owned manifest update]
+  GitOps --> Argo[Argo CD]
+  Argo --> K8s[Kubernetes workloads]
+  K8s --> Obs[Prometheus, Grafana, Loki, Alertmanager]
+```
+
+CI updates Git-managed manifests; it does not use a Kubernetes `kubeconfig`.
+Argo CD is the system that reconciles the desired state to the cluster.
+
+## What was engineered
+
+- Shared GitLab CI templates for five services, immutable commit-SHA image tags,
+  and per-service deployment keys.
+- GitOps delivery through Argo CD with automated sync, pruning, and self-healing.
+- Layered security controls: Gitleaks history scanning, SonarQube quality gates,
+  Trivy filesystem and image scans, scheduled rescans, and OWASP ZAP baseline
+  scanning.
+- Kubernetes platform controls including Sealed Secrets, namespace limits,
+  non-root images, Istio mTLS and gateway-only authorization policies.
+- Prometheus, Grafana, Loki, and Alertmanager plus documented troubleshooting
+  and the optional AWS EKS extension.
 
 This monorepo contains seven source directories:
 
